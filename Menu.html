@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Add Products</title>
+    <style>
+        :root { --p: #2563eb; --s: #16a34a; }
+        body { font-family: sans-serif; background: #f8fafc; padding: 20px; display: flex; justify-content: center; }
+        .card { background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px -1px #0001; width: 100%; max-width: 500px; }
+        h2 { margin-top: 0; color: #1e293b; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; }
+        label { display: block; margin-top: 15px; font-size: 0.85rem; font-weight: 600; color: #64748b; }
+        input, textarea { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+        .btn { width: 100%; padding: 12px; margin-top: 20px; border: none; border-radius: 6px; color: #fff; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-gh { background: #24292f; }
+        .btn-gh:hover { background: #000; }
+        .status { margin-top: 15px; padding: 10px; border-radius: 6px; font-size: 0.85rem; display: none; }
+        .success { display: block; background: #dcfce7; color: #166534; }
+        .error { display: block; background: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Admin: Add to GitHub</h2>
+    
+    <label>GitHub Personal Access Token</label>
+    <input type="password" id="token" placeholder="ghp_xxxxxxxxxxxx">
+    
+    <label>Repository (username/repo)</label>
+    <input type="text" id="repo" placeholder="sourabhalder/my-shop" valu ="iamsourabhalder/shop">
+
+    <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin-top: 20px;">
+        <label>Product Title</label>
+        <input type="text" id="title" placeholder="e.g. Blue T-Shirt">
+        
+        <label>Price (₹)</label>
+        <input type="number" id="price" placeholder="500">
+        
+        <label>Image URL</label>
+        <input type="text" id="img" placeholder="https://example.com/img.jpg">
+
+        <label>Notes/Description</label>
+        <textarea id="notes" rows="2"></textarea>
+    </div>
+
+    <button class="btn btn-gh" onclick="pushToGitHub()">Update GitHub (data.json)</button>
+    <div id="status" class="status"></div>
+    
+    <p style="font-size: 0.75rem; color: #94a3b8; margin-top: 15px;">
+        Note: This updates the <b>data.json</b> file in your main branch.
+    </p>
+</div>
+
+<script>
+    async function pushToGitHub() {
+        const token = document.getElementById('token').value;
+        const repo = document.getElementById('repo').value;
+        const status = document.getElementById('status');
+        
+        const product = {
+            id: "ID-" + Date.now(),
+            title: document.getElementById('title').value,
+            price: document.getElementById('price').value,
+            image: document.getElementById('img').value,
+            notes: document.getElementById('notes').value,
+            status: "Online"
+        };
+
+        if(!token || !repo || !product.title) {
+            showStatus("Please fill all required fields", "error");
+            return;
+        }
+
+        showStatus("Connecting to GitHub...", "");
+
+        const url = `https://api.github.com/repos/${repo}/contents/data.json`;
+        
+        try {
+            // 1. Get the current file (to get the SHA)
+            let sha = "";
+            let currentData = [];
+            
+            const getRes = await fetch(url, {
+                headers: { "Authorization": `token ${token}` }
+            });
+
+            if (getRes.ok) {
+                const fileInfo = await getRes.json();
+                sha = fileInfo.sha;
+                currentData = JSON.parse(atob(fileInfo.content));
+            } else if (getRes.status !== 404) {
+                throw new Error("Could not access repository");
+            }
+
+            // 2. Add new product to array
+            currentData.push(product);
+
+            // 3. Push back to GitHub
+            const putRes = await fetch(url, {
+                method: "PUT",
+                headers: {
+                    "Authorization": `token ${token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    message: `Add product: ${product.title}`,
+                    content: btoa(unescape(encodeURIComponent(JSON.stringify(currentData, null, 2)))),
+                    sha: sha // Required if file exists
+                })
+            });
+
+            if (putRes.ok) {
+                showStatus("Success! Product added to GitHub.", "success");
+                // Clear fields
+                document.getElementById('title').value = "";
+                document.getElementById('price').value = "";
+            } else {
+                const err = await putRes.json();
+                throw new Error(err.message);
+            }
+
+        } catch (e) {
+            showStatus("Error: " + e.message, "error");
+        }
+    }
+
+    function showStatus(msg, type) {
+        const s = document.getElementById('status');
+        s.innerText = msg;
+        s.className = "status " + type;
+        s.style.display = "block";
+    }
+</script>
+
+</body>
+</html>
+
