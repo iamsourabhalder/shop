@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Shop</title>
+    <style>
+        :root { --p: #16a34a; }
+        body { font-family: sans-serif; margin: 0; background: #f4f4f4; padding-bottom: 80px; }
+        header { background: #fff; padding: 15px; position: sticky; top: 0; display: flex; justify-content: space-between; box-shadow: 0 2px 5px #0001; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; padding: 10px; }
+        .card { background: #fff; padding: 10px; border-radius: 8px; text-align: center; }
+        .card img { width: 100%; height: 120px; object-fit: cover; border-radius: 5px; background: #eee; }
+        .btn { background: var(--p); color: #fff; border: none; padding: 8px; width: 100%; border-radius: 5px; cursor: pointer; margin-top: 5px; }
+        .cart-modal { position: fixed; inset: 0; background: #0008; display: none; place-items: center; z-index: 100; }
+        .cart-modal.open { display: grid; }
+        .cart-content { background: #fff; width: 90%; max-width: 400px; padding: 20px; border-radius: 10px; max-height: 80vh; overflow: auto; }
+        .item { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 10px 0; }
+        input, textarea { width: 100%; margin: 5px 0; padding: 8px; box-sizing: border-box; }
+        #badge { background: red; color: #fff; padding: 2px 6px; border-radius: 10px; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <b style="color:var(--p)">My Shop</b>
+    <div onclick="toggleCart()" style="cursor:pointer">🛒 <span id="badge">0</span></div>
+</header>
+
+<div id="list" class="grid">Loading...</div>
+
+<div id="modal" class="cart-modal">
+    <div class="cart-content">
+        <h3>Your Cart <span onclick="toggleCart()" style="float:right; cursor:pointer">✕</span></h3>
+        <div id="cart-items"></div>
+        <div id="form" style="display:none">
+            <input id="name" placeholder="Name">
+            <textarea id="addr" placeholder="Address"></textarea>
+            <button class="btn" style="background:#25d366" onclick="order()">Order on WhatsApp</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const USER = "iamsourabhalder", REPO = "git", FILE = "data.json";
+    const URL = `https://raw.githubusercontent.com/${USER}/${REPO}/main/${FILE}`;
+    
+    let products = [], cart = JSON.parse(localStorage.getItem('c')) || [];
+
+    async function init() {
+        try {
+            const res = await fetch(URL);
+            products = await res.json();
+            if (!Array.isArray(products)) products = [products];
+        } catch (e) { console.log("Offline"); }
+        render();
+        update();
+    }
+
+    function render() {
+        document.getElementById('list').innerHTML = products.map(p => `
+            <div class="card">
+                <img src="${p.fileData || p.image || ''}" onerror="this.src='https://placehold.co/200x120?text=Product'">
+                <h4>${p.title}</h4>
+                <p>₹${p.price || 0}</p>
+                <button class="btn" onclick="add('${p.id}')">Add to Cart</button>
+            </div>
+        `).join('');
+    }
+
+    function add(id) {
+        const p = products.find(x => x.id == id);
+        const has = cart.find(x => x.id == id);
+        has ? has.q++ : cart.push({...p, q: 1});
+        save();
+    }
+
+    function change(id, n) {
+        const i = cart.find(x => x.id == id);
+        if(i) { i.q += n; if(i.q <= 0) cart = cart.filter(x => x.id != id); }
+        save();
+    }
+
+    function save() {
+        localStorage.setItem('c', JSON.stringify(cart));
+        update();
+    }
+
+    function update() {
+        const count = cart.reduce((a, b) => a + b.q, 0);
+        document.getElementById('badge').innerText = count;
+        
+        const list = document.getElementById('cart-items');
+        document.getElementById('form').style.display = cart.length ? 'block' : 'none';
+        
+        if(!cart.length) return list.innerHTML = "Cart is empty";
+        
+        let total = 0;
+        list.innerHTML = cart.map(i => {
+            total += i.price * i.q;
+            return `<div class="item">
+                <div><b>${i.title}</b><br>₹${i.price} x ${i.q}</div>
+                <div>
+                    <button onclick="change('${i.id}',-1)">-</button>
+                    <button onclick="change('${i.id}',1)">+</button>
+                </div>
+            </div>`;
+        }).join('') + `<h4>Total: ₹${total}</h4>`;
+    }
+
+    function toggleCart() { document.getElementById('modal').classList.toggle('open'); }
+
+    function order() {
+        const n = document.getElementById('name').value, a = document.getElementById('addr').value;
+        if(!n || !a) return alert("Fill details");
+        let txt = `*Order*\nName: ${n}\nAddr: ${a}\n\n`;
+        cart.forEach(i => txt += `• ${i.title} x${i.q} = ₹${i.price * i.q}\n`);
+        window.location.href = `whatsapp://send?phone=+91_8513001304&text=${encodeURIComponent(txt)}`;
+    }
+
+    init();
+</script>
+</body>
+</html>
+
