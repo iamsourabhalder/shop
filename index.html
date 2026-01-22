@@ -115,7 +115,7 @@
         if(!n || !a) return alert("Fill details");
         let txt = `*Order*\nName: ${n}\nAddr: ${a}\n\n`;
         cart.forEach(i => txt += `• ${i.title} x${i.q} = ₹${i.price * i.q}\n`);
-        window.location.href = `https://wa.me/${918513001304}?text=${encodeURIComponent(txt)}`;
+        window.location.href = `https://wa.me/918513001304?text=${encodeURIComponent(txt)}`;
     }
 
     init();
