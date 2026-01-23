@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Products - GitHub Sync</title>
+    <style>
+        :root { --p: #2563eb; --d: #ef4444; --s: #16a34a; --bg: #f8fafc; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .card { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px #0001; margin-bottom: 20px; }
+        
+        h2 { margin-top: 0; font-size: 1.25rem; display: flex; align-items: center; gap: 10px; }
+        label { display: block; margin-top: 12px; font-size: 0.8rem; font-weight: bold; color: #64748b; }
+        input, textarea, select { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+        
+        .grid-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .btn { padding: 12px 20px; border: none; border-radius: 6px; color: #fff; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-p { background: var(--p); width: 100%; margin-top: 20px; }
+        .btn-s { background: var(--s); }
+        .btn-d { background: var(--d); padding: 5px 10px; font-size: 0.7rem; }
+        
+        .product-item { display: flex; align-items: center; gap: 15px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 10px; background: #fff; }
+        .product-item img { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; background: #eee; }
+        .product-info { flex: 1; }
+        .product-info h4 { margin: 0; font-size: 0.9rem; }
+        .product-info p { margin: 0; font-size: 0.8rem; color: #64748b; }
+
+        #status { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: #fff; display: none; z-index: 1000; animation: slideIn 0.3s; }
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        
+        .img-preview { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; margin-top: 10px; display: none; border: 2px solid var(--p); }
+        .loading { opacity: 0.5; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="status"></div>
+
+    <!-- Configuration -->
+    <div class="card">
+        <h2>🔑 GitHub Config</h2>
+        <div class="grid-inputs">
+            <div>
+                <label>Access Token</label>
+                <input type="password" id="token" placeholder="ghp_xxxx">
+            </div>
+            <div>
+                <label>Repo (user/repo)</label>
+                <input type="text" id="repo" placeholder="username/myshop">
+            </div>
+        </div>
+        <button class="btn btn-p" onclick="fetchFromGitHub()">1. Load Existing Products</button>
+    </div>
+
+    <!-- Add/Edit Form -->
+    <div class="card" id="form-container">
+        <h2 id="form-title">📦 Add New Product</h2>
+        <input type="hidden" id="edit-id">
+        
+        <label>Product Title</label>
+        <input type="text" id="title" placeholder="Full Product Name">
+        
+        <div class="grid-inputs">
+            <div>
+                <label>Price (₹)</label>
+                <input type="number" id="price" placeholder="0">
+            </div>
+            <div>
+                <label>Status</label>
+                <select id="prod-status">
+                    <option value="In Stock">In Stock</option>
+                    <option value="Out of Stock">Out of Stock</option>
+                </select>
+            </div>
+        </div>
+
+        <label>Product Image</label>
+        <input type="file" id="imageInput" accept="image/*" onchange="previewImage(this)">
+        <img id="preview" class="img-preview">
+        <input type="hidden" id="base64Image">
+
+        <label>Notes / Details</label>
+        <textarea id="notes" rows="2"></textarea>
+
+        <div style="display:flex; gap:10px;">
+            <button id="save-btn" class="btn btn-p" onclick="addOrUpdateProduct()">Add to List</button>
+            <button id="cancel-btn" class="btn" style="background:#64748b; margin-top:20px; display:none;" onclick="resetForm()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Product List -->
+    <div class="card">
+        <h2>📋 Current List (Locally modified)</h2>
+        <div id="product-list-ui">
+            <p style="color:#94a3b8; text-align:center;">No products loaded.</p>
+        </div>
+        <button id="sync-btn" class="btn btn-s" style="width:100%; margin-top:20px; display:none;" onclick="pushToGitHub()">2. Save All Changes to GitHub</button>
+    </div>
+</div>
+
+<script>
+    let allProducts = [];
+    let currentSha = "";
+
+    function notify(msg, type = 'p') {
+        const s = document.getElementById('status');
+        s.innerText = msg;
+        s.style.background = type === 'e' ? '#ef4444' : '#16a34a';
+        s.style.display = 'block';
+        setTimeout(() => s.style.display = 'none', 3000);
+    }
+
+    // Convert Image to Base64
+    function previewImage(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('preview').src = e.target.result;
+                document.getElementById('preview').style.display = 'block';
+                document.getElementById('base64Image').value = e.target.result;
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    async function fetchFromGitHub() {
+        const token = document.getElementById('token').value;
+        const repo = document.getElementById('repo').value;
+        if(!token || !repo) return alert("Enter Token and Repo");
+
+        const url = `https://api.github.com/repos/${repo}/contents/data.json`;
+        try {
+            const res = await fetch(url, { headers: { "Authorization": `token ${token}` }});
+            if (!res.ok) throw new Error("File not found or invalid repo");
+            
+            const data = await res.json();
+            currentSha = data.sha;
+            allProducts = JSON.parse(atob(data.content));
+            renderList();
+            document.getElementById('sync-btn').style.display = 'block';
+            notify("Data loaded from GitHub");
+        } catch (e) {
+            notify(e.message, 'e');
+            allProducts = [];
+            renderList();
+        }
+    }
+
+    function renderList() {
+        const container = document.getElementById('product-list-ui');
+        if(allProducts.length === 0) {
+            container.innerHTML = `<p style="text-align:center;color:#94a3b8;">List is empty</p>`;
+            return;
+        }
+        container.innerHTML = allProducts.map((p, index) => `
+            <div class="product-item">
+                <img src="${p.image || ''}" onerror="this.src='https://placehold.co/50x50'">
+                <div class="product-info">
+                    <h4>${p.title}</h4>
+                    <p>₹${p.price} | ${p.status}</p>
+                </div>
+                <button class="btn btn-s" style="padding:5px 10px; font-size:0.7rem;" onclick="editProduct('${p.id}')">Edit</button>
+                <button class="btn btn-d" onclick="deleteProduct('${p.id}')">Del</button>
+            </div>
+        `).join('');
+    }
+
+    function addOrUpdateProduct() {
+        const id = document.getElementById('edit-id').value;
+        const product = {
+            id: id || "PRD-" + Date.now(),
+            title: document.getElementById('title').value,
+            price: document.getElementById('price').value,
+            status: document.getElementById('prod-status').value,
+            image: document.getElementById('base64Image').value,
+            notes: document.getElementById('notes').value
+        };
+
+        if(!product.title || !product.price) return alert("Title and Price required");
+
+        if(id) {
+            const idx = allProducts.findIndex(p => p.id === id);
+            allProducts[idx] = product;
+            notify("Updated in local list");
+        } else {
+            allProducts.push(product);
+            notify("Added to local list");
+        }
+
+        resetForm();
+        renderList();
+        document.getElementById('sync-btn').style.display = 'block';
+    }
+
+    function editProduct(id) {
+        const p = allProducts.find(x => x.id === id);
+        document.getElementById('edit-id').value = p.id;
+        document.getElementById('title').value = p.title;
+        document.getElementById('price').value = p.price;
+        document.getElementById('prod-status').value = p.status;
+        document.getElementById('notes').value = p.notes;
+        document.getElementById('base64Image').value = p.image || "";
+        
+        if(p.image) {
+            document.getElementById('preview').src = p.image;
+            document.getElementById('preview').style.display = 'block';
+        }
+
+        document.getElementById('form-title').innerText = "📝 Edit Product";
+        document.getElementById('save-btn').innerText = "Update Item";
+        document.getElementById('cancel-btn').style.display = 'block';
+        window.scrollTo(0, 0);
+    }
+
+    function deleteProduct(id) {
+        if(confirm("Delete this product?")) {
+            allProducts = allProducts.filter(p => p.id !== id);
+            renderList();
+        }
+    }
+
+    function resetForm() {
+        document.getElementById('edit-id').value = "";
+        document.getElementById('title').value = "";
+        document.getElementById('price').value = "";
+        document.getElementById('notes').value = "";
+        document.getElementById('imageInput').value = "";
+        document.getElementById('base64Image').value = "";
+        document.getElementById('preview').style.display = 'none';
+        document.getElementById('form-title').innerText = "📦 Add New Product";
+        document.getElementById('save-btn').innerText = "Add to List";
+        document.getElementById('cancel-btn').style.display = 'none';
+    }
+
+    async function pushToGitHub() {
+        const token = document.getElementById('token').value;
+        const repo = document.getElementById('repo').value;
+        const url = `https://api.github.com/repos/${repo}/contents/data.json`;
+        
+        document.body.classList.add('loading');
+        notify("Syncing with GitHub...");
+
+        try {
+            const res = await fetch(url, {
+                method: "PUT",
+                headers: { "Authorization": `token ${token}`, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    message: "Update products catalog",
+                    content: btoa(unescape(encodeURIComponent(JSON.stringify(allProducts, null, 2)))),
+                    sha: currentSha
+                })
+            });
+
+            if (!res.ok) throw new Error("Sync failed. Check token/permissions.");
+            
+            const result = await res.json();
+            currentSha = result.content.sha;
+            notify("✅ All changes saved to GitHub!");
+        } catch (e) {
+            notify(e.message, 'e');
+        } finally {
+            document.body.classList.remove('loading');
+        }
+    }
+</script>
+
+</body>
+</html>
+
