@@ -11,9 +11,9 @@
     "id": "ID-1769148166552",
     "title": "Dress",
     "price": "999",
+    "status": "",
     "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcQl852wz0UacIA8AcLctf9jmOiZBxxi4LwohIHaXN1PSLxcx3uvkWCznKxPNDusy9HV8E_QOZeW58_jQKarRtO7Ge9jZKvebqO0oai2eWMugOi-CBwtyT9v",
-    "notes": "New ",
-    "status": "Online"
+    "notes": "New "
   },
   {
     "id": "ID-1769148210336",
